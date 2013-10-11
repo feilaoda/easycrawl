@@ -15,15 +15,10 @@ from scrapy.selector import HtmlXPathSelector
 
 
 from .crawl import Executor, EasyCrawler
-from .helper import STAT_DONE, STAT_INIT, STAT_RUNNING
-from .helper import save_crawl_data, create_crawl_class, load_settings
-from .models import CrawlSite 
-
 from .util import to_md5, merge_url
+
 logger = logging.getLogger(__name__)
 
-from tornado.options import options
-from dojang.util import reset_option, import_object
 
 def create_request(url, headers):
     request = urllib2.Request(url)
@@ -37,45 +32,31 @@ def make_matatable(name):
 def create_easycrawl_worker(db, site_name):
     return EasyWorker(db, site_name)
 
+class Item(object):
+    def __init__(self, name, patten, action):
+        self.id = 0
+        self.url = None
+        self.is_saved = 0
+        self.is_data = 0
+        self.category = None
+        self.code = 0
+        self.html =  None
+        self.rule = None
 
-class EasyWorker(object):
-    def __init__(self, db, site_name):
-        self.site_name = site_name
-        self.db = db
-
-    def parse(self):
-        site = CrawlSite.query.filter_by(name=self.site_name).first()
-        settings = load_settings(site)
-        myspider = import_object("easycrawl.%s.app.Spider" % self.site_name)
-        self.spider = myspider(settings)
-        self.spider.run_parser()
-
-    def debug(self):
-        self.run(debug=True)
-
-
-    def run(self, callback=None, worker_count=2, debug=False):
-        site = CrawlSite.query.filter_by(name=self.site_name).first()
-        settings = load_settings(site)
-        myspider = import_object("easycrawl.%s.app.Spider" % self.site_name)
-        if debug:
-            settings['debug'] = True
-
-        self.spider = myspider(settings)
-        if settings.worker_count:
-            worker_count = settings.worker_count
-        crawler = EasyCrawler(self.spider, self.db, callback=callback,workers_count=worker_count)
-        crawler.start()
-
-    def finished(self):
-        logging.debug('finished workder:')
-        self.spider.finished(self.db)
+class Rule(object):
+    """docstring for Rule"""
+    def __init__(self, name, patten, action):
+        super(Rule, self).__init__()
+        self.name = name
+        self.patten = patten
+        self.action= action
+        
 
 
 class EasySpider(Executor):
     def __init__(self, settings):
         self.site_name = settings.site_name
-        self.crawl_class = create_crawl_class(settings.site_name)
+        # self.crawl_class = create_crawl_class(settings.site_name)
         self.site_id = settings.site_id
         self.headers = settings.headers
         self.settings = settings
@@ -88,111 +69,105 @@ class EasySpider(Executor):
             self.crawl_url_prefix = ''
         else:
             self.crawl_url_prefix = settings.crawl_url_prefix
-            
-        if settings.data_urls is None or settings.data_urls == '':
-            self.data_urls = []
-        else:
-            self.data_urls = settings.data_urls.split('||')
-
-        if settings.crawl_urls is None or settings.crawl_urls == '':
-            self.crawl_urls = []
-        else:
-            self.crawl_urls = settings.crawl_urls.split('||')
 
         if settings.debug is None or not settings.debug:
             self.debug = False
         else:
             self.debug = True
 
-
         if settings.sleep_period:
             self.sleep_period = float(settings.sleep_period)
         else:
             self.sleep_period = 0
 
-        print "data_url_prefix: " , self.data_url_prefix
-        print "crawl_url_prefix: " , self.crawl_url_prefix
+        self.rules = settings['rules']
 
 
-    def scheduler(self, db):
-        items = self.load_urls(count=30)
-        for item in items:
-            item.is_saved = STAT_RUNNING
-            db.session.add(item)
-            db.session.commit()
+
+    # def scheduler(self):
+    #     items = self.load_urls(count=30)
+    #     for item in items:
+    #         item.is_saved = STAT_RUNNING
+    #         db.session.add(item)
+    #         db.session.commit()
         
-        return items
+    #     return items
     
-    def load_urls(self, count=30):
-        urls = self.crawl_class.query.filter_by(is_saved=0).limits(0, 30).all()
-        return urls
-    
-    def is_data_url(self, url):
-        for patten in self.data_urls:
-            patten = patten.strip()
+    # def load_urls(self, count=30):
+    #     urls = self.crawl_class.query.filter_by(is_saved=0).limits(0, 30).all()
+    #     return urls
+
+    def check_rules(self, url):
+        for rule in self.rules:
+            patten = rule.patten.strip()
             if re.search(patten, url):
-                return True
-        return False
+                return rule
+        return None
     
-    def is_crawl_url(self, url):
-        for patten in self.crawl_urls:
-            patten = patten.strip()
-            if re.search(patten, url):
-                return True
+    # def is_data_url(self, url):
+    #     for patten in self.data_urls:
+    #         patten = patten.strip()
+    #         if re.search(patten, url):
+    #             return True
+    #     return False
+    
+    # def is_crawl_url(self, url):
+    #     for patten in self.crawl_urls:
+    #         patten = patten.strip()
+    #         if re.search(patten, url):
+    #             return True
          
-        return False
-
-    def save_new_urls(self, db, category,  newurls):
-        for url in newurls:            
-            is_data = 0
-            if self.is_data_url(url):
-                url = merge_url(url, self.data_url_prefix)
-                is_data = 1
-            else:
-                url = merge_url(url, self.crawl_url_prefix)
-
-            url_hash = to_md5(url)
-            old_urls = self.crawl_class.query.filter_by(url_hash=url_hash).all()
-            if len(old_urls) > 0:
-                continue
-            new_crawl_url = self.crawl_class()
-            new_crawl_url.url = url
-            new_crawl_url.category = category
-            new_crawl_url.url_hash = url_hash
-            new_crawl_url.is_data = is_data
-            
-            db.session.add(new_crawl_url)
-            db.session.commit()
-            print "url added: ", url
+    #     return False
 
 
-    def worker(self, db, item):
+
+
+    def worker(self, item):
         if self.sleep_period > 0:
             sleep(self.sleep_period)
         res = None
-        # try:
-        res = self.do_worker(item.url)
-        if res['code'] == 200:
-            new_urls, res = self.parse(res)
-            self.save_new_urls(db, item.category, new_urls)
-            save_crawl_data(self.crawl_class, db, item, res['html'], self.debug)
-        else:
-            code = res['code']
+        new_urls = []
+        res = self.__download_url(item.url)
+        res_item = Item()
+        res_item.code = res['code']
+        res_item.id = item.id
+        res_item.is_data = item.is_data
+        res_item.url = item.url
+        res_item.category = item.category
+        if res_item.code == 200:
+            res_item.html = res['html']
+            new_urls = self.__parse_new_urls(res)
+            rule = self.check_rules(item.url)
+            if rule:
+                res_item.rule = rule
+        return res_item, new_urls
 
-            crawl_url = self.crawl_class.query.filter_by(id=item.id).first()
-            if crawl_url is not None:
-                crawl_url.is_saved = code
-                db.session.add(crawl_url)
-                db.session.commit()
+    def after_worker(self, item, newurls):
+        pass
 
-        res['is_data'] = item.is_data #self.is_data_url(item.url)
-        res['url'] = item.url
-        res['category'] = item.category
-        res['url_id'] = item.id
-        return res
+    def pipeline(self, item):
+        items = dict()
+        try:
+            if item.rule.action != 'data':
+                return None
+            hxs = HtmlXPathSelector(text=item.html)
+            action_name = item.rule.name
+            parser = self.settings[action_name]
+            if parser:
+                res = parser(hxs, items)
+                if not res:
+                    logger.error('spider parser %s parse(hxs, items) error' % action_name)
+                    return None
+            else:
+                logger.error('can not find parser %s' % action_name)
+                return None
+        except Exception, e:
+            logger.error('parse pipeline error, %s' % traceback.format_exc())
+            return None
+        return items
 
-    def do_worker(self, url):
-        logger.debug("Download starting...\n[%s]" % url)
+    def __download_url(self, url):
+        logger.debug("Download starting...[%s]\n" % url)
         request = create_request(url, self.headers)
         try:
             response = urllib2.urlopen(request, timeout=20)
@@ -211,37 +186,38 @@ class EasySpider(Executor):
                 self.headers['Cookie'] = cookies
 
             response.close()
-            logger.debug("Download end\n[%s]" % url)
-            return dict(code=200, url=url, html=html)
+            logger.debug("Download end...[%s]\n" % url)
+            return dict(code=200, html=html)
 
         except urllib2.HTTPError, e:
-            print 'you got an error with the http code', e
+            logger.error('you got an error with the httperror, %s' % traceback.format_exc())
             return dict(code = e.code)
         except urllib2.URLError, e:
-            print 'you got an error with the url code', e
+            logger.error('you got an error with the urlerror, %s' % traceback.format_exc())
             return dict(code = 500)
 
         return dict(code=-1)
     
-    def parse(self, result):
+    def __parse_new_urls(self, result):
         if result['code'] != 200:
-            return [],[]
+            return []
         html = result['html']
         hxs = HtmlXPathSelector(text=html)
         links = hxs.select('//a/@href').extract()
         new_urls = []
-        for url in links:    
-            
-            if self.is_crawl_url(url):
-                new_urls.append(url)
+        for url in links:
+            rule = self.check_rules(url)
+            if rule:
+                if rule.action == 'list':
+                    new_urls.append([url, 'list'])
+                elif rule.action == 'data':
+                    new_urls.append([url, 'data'])
 
-            if self.is_data_url(url):
-                new_urls.append(url)
+         
                
-        return new_urls, result
+        return new_urls
     
-    def pipeline(self, db, results):
-        pass
+    
             
     def run_parser(self):
         urls = self.crawl_class.query.filter_by(is_saved=0, is_data=1).limits(0, 30).all()

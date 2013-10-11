@@ -204,7 +204,7 @@ class Spider(EasySpider):
             kv = parse_data(res)
             print kv
 
-worker = EasyWorker(crawldb, 'eslpod')
+
 
 
 

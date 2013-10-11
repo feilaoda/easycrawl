@@ -1,46 +1,34 @@
 # -*- coding: utf-8 -*-
+#!/usr/bin/env python
 
 import cPickle
-from dojang.util import to_md5,import_object
+from util import to_md5
 from urlparse import urlparse
 from easycrawl.crawl import EasyCrawler
 
 from .models import CrawlUrl, CrawlLog, ObjectDict, CrawlSite, CrawlSiteSettings
 
-STAT_INIT = int(0)
-STAT_DONE = int(200)
-STAT_RUNNING = int(1)
-STAT_ERROR = int(500)
 
 
 
 
-def create_crawl_class(tablaname):
-    name = 'crawl_%s' % tablaname
-    db_dict={'__tablename__':name,
-        '__table_args__':{'autoload':False, 'extend_existing':True},}
-
-    clz = type(str(tablaname)+'CrawlUrl', (CrawlUrl,), db_dict)
-
-    return clz
 
 
+# def save_crawl_data(clazz, db, item, html, save_html=False):
+#     #update is saved status
+#     crawl_url = clazz.query.filter_by(id=item.id).first()
+#     if crawl_url is not None:
+#         crawl_url.is_saved = STAT_DONE
+#         db.session.add(crawl_url)
+#         db.session.commit()
+#         print 'update STAT DONE url:', crawl_url.url, "is/or not data?: ", crawl_url.is_data, "save html:", save_html
+#         if not save_html:
+#             return
+#         else:
 
-def save_crawl_data(clazz, db, item, html, save_html=False):
-    #update is saved status
-    crawl_url = clazz.query.filter_by(id=item.id).first()
-    if crawl_url is not None:
-        crawl_url.is_saved = STAT_DONE
-        db.session.add(crawl_url)
-        db.session.commit()
-        print 'update STAT DONE url:', crawl_url.url, "is/or not data?: ", crawl_url.is_data, "save html:", save_html
-        if not save_html:
-            return
-        else:
-
-            crawl_url.html = cPickle.dumps(html)
-            db.session.add(crawl_url)
-            db.session.commit()
+#             crawl_url.html = cPickle.dumps(html)
+#             db.session.add(crawl_url)
+#             db.session.commit()
 
         # if crawl_url.is_data == 1:
         #     print 'saving data ', crawl_url.url, 
@@ -76,20 +64,14 @@ def save_crawl_data(clazz, db, item, html, save_html=False):
         #     db.session.commit()
 
 
-def update_crawl_status(clazz, db, url, status):
-    url_hash = to_md5(url)
-    crawl_url = clazz.query.filter_by(url_hash=url_hash).first()
-    if crawl_url:
-        crawl_url.is_saved = status
-        db.session.add(crawl_url)
-        db.session.commit()
 
-def update_crawl_url_status(clazz, db, id, status):
-    crawl_url = clazz.query.filter_by(id=id).first()
-    if crawl_url:
-        crawl_url.is_saved = status
-        db.session.add(crawl_url)
-        db.session.commit()
+
+# def update_crawl_url_status(clazz, db, id, status):
+#     crawl_url = clazz.query.filter_by(id=id).first()
+#     if crawl_url:
+#         crawl_url.is_saved = status
+#         db.session.add(crawl_url)
+#         db.session.commit()
 
 
 def logger_db_error(db, site_id, log):
@@ -99,16 +81,18 @@ def logger_db_error(db, site_id, log):
     db.session.add(log)
     db.session.commit()
 
-def load_settings(site):
-    site_settings = CrawlSiteSettings.query.filter_by(site_id=site.id).all()
-    settings = ObjectDict()
-    settings['site_id'] = site.id
-    headers=dict()
-    for setting in site_settings:
-        settings[setting.key] = setting.value
-        if setting.key.startswith('Header-'):
-            key = setting.key[7:]
-            headers[key] = setting.value
 
-    settings['headers'] = headers
-    return settings
+
+
+    # site_settings = CrawlSiteSettings.query.filter_by(site_id=site.id).all()
+    # settings = ObjectDict()
+    # settings['site_id'] = site.id
+    # headers=dict()
+    # for setting in site_settings:
+    #     settings[setting.key] = setting.value
+    #     if setting.key.startswith('Header-'):
+    #         key = setting.key[7:]
+    #         headers[key] = setting.value
+
+    # settings['headers'] = headers
+    # return settings

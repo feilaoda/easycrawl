@@ -9,31 +9,54 @@ import md5
 import urllib
 import re
 import types
-from tornado.options import define, options
+from options import define
 import HTMLParser
 
-def set_default_option(name, default=None, **kwargs):
-    if name in options:
-        return
-    define(name, default, **kwargs)
+# def set_default_option(name, default=None, **kwargs):
+#     if name in options:
+#         return
+#     define(name, default, **kwargs)
 
 
-def reset_option(name, default=None, **kwargs):
-    if name in options:
-        options[name].set(default)
-        return
-    define(name, default, **kwargs)
+# def reset_option(name, default=None, **kwargs):
+#     if name in options:
+#         options[name].set(default)
+#         return
+#     define(name, default, **kwargs)
+
+def load_settings(settings):
+    headers=dict()
+    for k in settings.keys():
+        if k.startswith('Header_'):
+            key = k[7:].replace('_','-')
+            headers[key] = settings[k]
+            del settings[k]
+        if k.startswith('easycrawl_'):
+            define(k, settings[k])
+
+    settings['headers'] = headers
+    site_name = settings['site_name']
+    rules_name = "%s.rules.rules" % site_name
+    rules = import_object(rules_name)
+    settings['rules'] = rules
+    parsers_name = "%s.spider.parsers" % site_name
+    parsers = import_object(parsers_name)
+    settings['parsers'] = parsers
 
 
-def parse_config_file(path):
+def parse_config_file(settings, path):
     config = {}
     execfile(path, config, config)
     for name in config:
-        if name in options:
-            options[name].set(config[name])
-        else:
-            define(name, config[name])
+        settings[name] = config[name]
+    
+        
 
+def extract_value(v):
+    if v and isinstance(v, list):
+        return v[0].strip()
+    else:
+        return None
 
 def to_all_value(v):
     if len(v) > 0:
@@ -129,8 +152,7 @@ class HtmlTool(object):
 
 
 def import_object(name, arg=None):
-    """tornado.util.import_object replacement for july project
-
+    """
     .. attention:: you should not use this function
     """
 
